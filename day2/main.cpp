@@ -80,8 +80,6 @@ int main(int argc, char* argv[]) {
 		return game;
 	});
 
-	auto debug = processed3 | std::ranges::to<std::vector<GameWorking>>();
-
 	auto processed4 = processed3 | std::views::filter([](const GameWorking& game) {
 		for (auto& round : game.rounds) {
 			if (round[0] > 12 || round[1] > 13 || round[2] > 14) {
@@ -93,17 +91,28 @@ int main(int argc, char* argv[]) {
 		return true;
 	});
 
-	auto debug2 = processed4 | std::ranges::to<std::vector<GameWorking>>();
-
 	auto processed5 = processed4 | std::views::transform([](auto rng1) { return rng1.gameId; });
 
 	auto sumCalc = std::accumulate(processed5.begin(), processed5.end(), 0);
+
+	auto minCubes = processed3 | std::views::transform([](const GameWorking& game) {
+		return std::reduce(game.rounds.begin(), game.rounds.end(), std::valarray{ 0,0,0 }, [](const auto& left, const auto& right) {
+			return std::valarray{ std::max(left[0], right[0]), std::max(left[1], right[1]), std::max(left[2], right[2]) };
+		});
+	});
+
+	auto powers = minCubes | std::views::transform([](const std::valarray<int>& arr) {
+		return arr[0] * arr[1] * arr[2];
+	});
+
+	auto powerAccumulate = std::accumulate(powers.begin(), powers.end(), 0);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 
 	fmt::print("Processed 1: {}\n", sumCalc);
+	fmt::print("Processed 2: {}\n", powerAccumulate);
 
 
 	fmt::print("Took {}\n", dur);
