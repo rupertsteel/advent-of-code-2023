@@ -67,8 +67,6 @@ int main(int argc, char* argv[]) {
 
 	std::set<Word*> partNumberWords;
 
-	int sum2 = 0;
-
 	int row = 0;
 	for (const auto& line : processed2) {
 
@@ -115,6 +113,8 @@ int main(int argc, char* argv[]) {
 		row++;
 	}
 
+	int gearRatioSum = 0;
+
 	for (const auto& symbol : positionToSymbol) {
 
 		std::set<Word*> symbolWords;
@@ -129,10 +129,17 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		for (auto point : symbolWords) {
-			auto number = std::stoi(point->digits);
-			sum2 += number;
+		if (symbol.second->digits == "*" && symbolWords.size() == 2) {
+			int gearProduct = 1;
+			for (auto point : symbolWords) {
+				auto number = std::stoi(point->digits);
+				gearProduct *= number;
+			}
+
+			gearRatioSum += gearProduct;
 		}
+
+
 	}
 
 	int sum = 0;
@@ -148,7 +155,7 @@ int main(int argc, char* argv[]) {
 
 
 	fmt::print("Processed 1: {}\n", sum);
-	fmt::print("Processed 2: {}\n", sum2);
+	fmt::print("Processed 2: {}\n", gearRatioSum);
 
 
 	fmt::print("Took {}\n", dur);
