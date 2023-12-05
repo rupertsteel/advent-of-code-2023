@@ -24,6 +24,12 @@ struct Mapping {
 	uint64_t length;
 };
 
+struct Range {
+	uint64_t start;
+	uint64_t length;
+};
+
+
 struct Mapper {
 	std::vector<Mapping> mappings;
 
@@ -69,6 +75,16 @@ std::vector<uint64_t> parseSeeds(std::string_view line) {
 	output.push_back(val);
 
 	return output;
+}
+
+std::vector<Range> seedsToSeedRanges(const std::vector<uint64_t>& seeds) {
+	std::vector<Range> returnVec;
+
+	for (int i = 0; i < seeds.size(); i += 2) {
+		returnVec.push_back(Range{ seeds[i], seeds[i + 1] });
+	}
+
+	return returnVec;
 }
 
 int main(int argc, char* argv[]) {
@@ -148,13 +164,34 @@ int main(int argc, char* argv[]) {
 		minLocation = std::min(location, minLocation);
 	}
 
+	uint64_t minRangeLocation = std::numeric_limits<uint64_t>::max();
+	auto seedRanges = seedsToSeedRanges(seeds);
+
+	for (auto seedRange : seedRanges) {
+		fmt::print("Seed range {}\n", seedRange.start);
+
+		for (uint64_t i = 0; i < seedRange.length; i++) {
+			auto seed = i + seedRange.start;
+
+			auto soil = seedToSoil.map(seed);
+			auto fertilizer = soilToFertilizer.map(soil);
+			auto water = fertilizerToWater.map(fertilizer);
+			auto light = waterToLight.map(water);
+			auto temperature = lightToTemperature.map(light);
+			auto humidity = temperatureToHumidity.map(temperature);
+			auto location = humidityToLocation.map(humidity);
+
+			minRangeLocation = std::min(location, minRangeLocation);
+		}
+	}
+
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 
 	fmt::print("Processed 1: {}\n", minLocation);
-	//fmt::print("Processed 2: {}\n", numCardsProcessed);
+	fmt::print("Processed 2: {}\n", minRangeLocation);
 
 
 	fmt::print("Took {}\n", dur);
