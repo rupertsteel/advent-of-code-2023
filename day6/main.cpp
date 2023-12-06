@@ -19,8 +19,8 @@
 using namespace std::string_view_literals;
 
 struct RaceInfo {
-	int maxTimeMilliseconds;
-	int recordDistanceMillimeters;
+	uint64_t maxTimeMilliseconds;
+	uint64_t recordDistanceMillimeters;
 };
 
 std::array<RaceInfo, 3> testRaces = {{
@@ -35,6 +35,14 @@ std::array<RaceInfo, 4> realRaces = {{
 	{69, 1138},
 	{81, 1458}
 }};
+
+std::array<RaceInfo, 1> part2testRaces = {{
+	{ 71530, 940200 }
+}};
+
+std::array<RaceInfo, 1> part2realRaces = { {
+	{ 44826981, 202107611381458 }
+} };
 
 uint64_t findNumberOfPassingRaces(RaceInfo race) {
 	uint64_t numWays = 0;
@@ -57,7 +65,7 @@ int main(int argc, char* argv[]) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	//auto& dataUsed = testRaces;
-	auto& dataUsed = realRaces;
+	auto& dataUsed = part2realRaces;
 
 	uint64_t numWays = 1;
 
