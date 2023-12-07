@@ -42,6 +42,10 @@ HandBid lineToHandBid(std::string_view sv) {
 		if (ch == 'A') {
 			ch = 'Z';
 		}
+
+		if (ch == 'J') {
+			ch = '*';
+		}
 	}
 
 	std::string tempStr{ sv };
@@ -86,9 +90,33 @@ int findHandTier(const std::string& hand) {
 	return 4; // high card
 }
 
+int findJokerHandTier(const std::string& hand) {
+	// if the hand doesn't have a joker, pass to the underlying function
+	if (std::ranges::none_of(hand, [](char val) {return val == '*';})) {
+		return findHandTier(hand);
+	}
+
+	// we have a joker, replace it with every other type
+	auto jokerPos = hand.find('*');
+
+	int highestVal = 0;
+
+	std::array replaceChars = { '2', '3', '4', '5', '6', '7', '8', '9', '<', 'Q', 'U', 'Z' };
+	for (auto ch : replaceChars) {
+		auto newStr = hand;
+		newStr[jokerPos] = ch;
+
+		auto checkVal = findJokerHandTier(newStr);
+
+		highestVal = std::max(checkVal, highestVal);
+	}
+
+	return highestVal;
+}
+
 std::strong_ordering handBidSort(const HandBid& left, const HandBid& right) {
-	auto tierLeft = findHandTier(left.hand);
-	auto tierRight = findHandTier(right.hand);
+	auto tierLeft = findJokerHandTier(left.hand);
+	auto tierRight = findJokerHandTier(right.hand);
 
 	auto compare = tierLeft <=> tierRight;
 
