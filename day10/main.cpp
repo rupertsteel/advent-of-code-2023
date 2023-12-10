@@ -75,6 +75,8 @@ int main(int argc, char* argv[]) {
 	std::optional<Point> startPoint;
 
 	std::map<Point, char> map;
+	int maxX = 0;
+
 	int y = 0;
 	for (const auto& line : nonEmptyLines) {
 
@@ -84,6 +86,8 @@ int main(int argc, char* argv[]) {
 			if (line[x] == 'S') {
 				startPoint = Point{ x,y };
 			}
+
+			maxX = std::max(maxX, x);
 		}
 
 		++y;
@@ -94,6 +98,14 @@ int main(int argc, char* argv[]) {
 	}
 
 	std::map<Point, int> distanceMap;
+
+	std::map<Point, char> doubleGrid;
+
+	for (const auto& elem : map) {
+		auto newLoc = Point{ 1 + 2 * elem.first.x, 1 + 2 * elem.first.y };
+
+		doubleGrid[newLoc] = elem.second;
+	}
 
 	distanceMap[*startPoint] = 0;
 
@@ -112,6 +124,12 @@ int main(int argc, char* argv[]) {
 
 		if (validConnectors[i].contains(ch)) {
 			pointsToProcess.push(ProcessPoint{ checkLocation, 1 });
+
+			// add blocker to double grid
+			auto startDoubleLoc = Point{ 1 + 2 * startPoint->x, 1 + 2 * startPoint->y };
+			auto blockerDoubleLoc = startDoubleLoc + offset;
+
+			doubleGrid[blockerDoubleLoc] = 'B';
 		}
 	}
 
@@ -145,15 +163,100 @@ int main(int argc, char* argv[]) {
 			auto loc = point.point + offset;
 
 			pointsToProcess.push(ProcessPoint{ loc, point.distanceFromStart + 1 });
+
+			// add blocker to double grid
+			auto startDoubleLoc = Point{ 1 + 2 * point.point.x, 1 + 2 * point.point.y };
+			auto blockerDoubleLoc = startDoubleLoc + offset;
+
+			doubleGrid[blockerDoubleLoc] = 'B';
 		}
 	}
+
+	// replace points not connected to the grid with '.'
+	for (const auto& loc : map) {
+		auto ch = loc.second;
+
+		if (ch == '|' || ch == '-' || ch == 'J' || ch == 'F' || ch == 'L' || ch == '7') {
+			if (!distanceMap.contains(loc.first)) {
+				auto doubleGridLoc = Point{ 1 + 2 * loc.first.x, 1 + 2 * loc.first.y };
+
+				doubleGrid[doubleGridLoc] = '.';
+			}
+		}
+	}
+
+	// floodFill double grid, when the floodfill encounters an empty location (within bounds), we fill with '#',
+	// when we encounter '.', replace with 'O'
+	// bounds are (-2, -2), (maxX + 2, y + 2)
+
+	std::queue<Point> floodQueue;
+	floodQueue.push(Point{ -2, -2 });
+
+	int doubleGridMaxX = (maxX + 2) * 2 + 1;
+	int doubleGridMaxY = (y + 2) * 2 + 1;
+
+	std::set<Point> donePoints;
+
+	while (!floodQueue.empty()) {
+		auto nextPoint = floodQueue.front();
+		floodQueue.pop();
+
+		if (donePoints.contains(nextPoint)) {
+			continue;
+		}
+
+		if (nextPoint.x < -2 || nextPoint.y < -2 || nextPoint.x > doubleGridMaxX || nextPoint.y > doubleGridMaxY) {
+			continue;
+		}
+
+		if (doubleGrid.contains(nextPoint)) {
+			auto val = doubleGrid.at(nextPoint);
+
+			if (val == 'B' || val == '|' || val == '-' || val == 'J' || val == 'F' || val == '7' || val == 'L' || val == 'S') {
+				continue;
+			}
+
+			if (val == '.') {
+				doubleGrid[nextPoint] = 'O';
+			}
+		} else {
+			doubleGrid[nextPoint] = '#';
+		}
+
+		for (auto& offset : plusOffsets) {
+			auto newPoint = nextPoint + offset;
+
+			floodQueue.push(newPoint);
+		}
+
+		donePoints.insert(nextPoint);
+	}
+
+	auto countNotTouched = std::ranges::count_if(doubleGrid, [](auto& val) {
+		return val.second == '.';
+		});
+
+	std::string mapPrintTest;
+	for (int y = -2; y <= doubleGridMaxY; y++) {
+		for (int x = -2; x <= doubleGridMaxX; x++) {
+			if (doubleGrid.contains(Point{x, y})) {
+				mapPrintTest.push_back(doubleGrid.at(Point{ x, y }));
+			} else {
+				mapPrintTest.push_back(' ');
+			}
+		}
+
+		mapPrintTest.push_back('\n');
+	}
+
+	fmt::print("{}\n", mapPrintTest);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 
 	fmt::print("Processed 1: {}\n", maxDistance);
-	//fmt::print("Processed 2: {}\n", frontPredictSum);
+	fmt::print("Processed 2: {}\n", countNotTouched);
 
 
 	fmt::print("Took {}\n", dur);
