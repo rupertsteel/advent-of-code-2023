@@ -13,6 +13,7 @@
 #include <valarray>
 #include <regex>
 #include <set>
+#include <ratio>
 
 #include <fmt/ranges.h>
 #include <fmt/chrono.h>
@@ -259,7 +260,7 @@ int main(int argc, char* argv[]) {
 	fmt::print("Processed 2: {}\n", countNotTouched);
 
 
-	fmt::print("Took {}\n", dur);
+	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
 
 	return 0;
 }
