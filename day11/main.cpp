@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
 
 		for (auto it = galaxies.begin(); it != galaxies.end();) {
 			if (it->y > expandRow) {
-				newGalaxies.insert(Point{ it->x, it->y + 1 });
+				newGalaxies.insert(Point{ it->x, it->y + 999'999 });
 				it = galaxies.erase(it);
 			} else {
 				++it;
@@ -130,7 +130,7 @@ int main(int argc, char* argv[]) {
 
 		for (auto it = galaxies.begin(); it != galaxies.end();) {
 			if (it->x > expandColumn) {
-				newGalaxies.insert(Point{ it->x + 1, it->y });
+				newGalaxies.insert(Point{ it->x + 999'999, it->y });
 				it = galaxies.erase(it);
 			} else {
 				++it;
@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
-	debugPrintMap(galaxies);
+	//debugPrintMap(galaxies);
 
 	fmt::print("Processed 1: {}\n", totalDistance);
 	//fmt::print("Processed 2: {}\n", countNotTouched);
