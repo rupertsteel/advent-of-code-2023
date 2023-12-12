@@ -15,12 +15,42 @@
 #include <set>
 #include <ratio>
 #include <execution>
+#include <unordered_map>
 
 #include <fmt/ranges.h>
 #include <fmt/chrono.h>
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
+
+namespace std {
+	template<>
+	struct hash<std::vector<int>> {
+		std::size_t operator()(const std::vector<int>& s) const noexcept {
+			auto hs = std::hash<std::size_t>{}(s.size());
+
+			for (auto val : s) {
+				auto hv = std::hash<int>{}(val);
+
+				hs ^= hv + 0x9e3779b9 + (hs << 6) + (hs >> 2);
+			}
+
+			return hs;
+		}
+	};
+
+	template<>
+	struct hash<std::tuple<std::vector<int>, std::string>> {
+		std::size_t operator()(const std::tuple<std::vector<int>, std::string>& s) const noexcept {
+			auto h1 = std::hash<std::vector<int>>{}(std::get<0>(s));
+			auto h2 = std::hash<std::string>{}(std::get<1>(s));
+
+			h1 ^= h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2);
+
+			return h1;
+		}
+	};
+}
 
 struct Point {
 	int x;
@@ -121,9 +151,9 @@ struct Run {
 	}
 
 	void expand() {
-		auto newStr = run + "?" + run + "?" + run;
+		auto newStr = run + "?" + run + "?" + run + "?" + run + "?" + run;
 		std::vector<int> newArrangements;
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 5; i++) {
 			for (auto val : arrangements) {
 				newArrangements.push_back(val);
 			}
@@ -133,7 +163,7 @@ struct Run {
 		arrangements = newArrangements;
 	}
 
-	uint64_t findArrangements2Internal(std::span<const int> remainingItems, std::string processStr, std::string_view remainStr, const std::span<const int> allItems) {
+	uint64_t findArrangements2Internal(std::span<const int> remainingItems, std::string processStr, std::string_view remainStr, const std::span<const int> allItems, std::unordered_map<std::tuple<std::vector<int>, std::string>, uint64_t>& memory) {
 		// move any empty spaces to the processStr
 		while (!remainStr.empty() && remainStr[0] == '.') {
 			processStr.push_back('.');
@@ -143,10 +173,15 @@ struct Run {
 		if (remainStr.empty() && !remainingItems.empty()) {
 			return 0;
 		}
-		if (remainingItems.empty() && std::ranges::all_of(remainStr, [](auto ch) {
+		if (remainingItems.empty() && (remainStr.empty() || std::ranges::all_of(remainStr, [](auto ch) {
 			return ch == '.' || ch == '?';
-		})) {
+		}))) {
+
+			//fmt::println("Return {}_{}", processStr, remainStr);
+
 			return 1;
+		} else if (remainingItems.empty()) {
+			return 0;
 		}
 
 		auto checkNextItemWorks = [&]() {
@@ -154,7 +189,7 @@ struct Run {
 				return std::ranges::all_of(remainStr | std::views::take(remainingItems[0]), [](auto ch) {
 					return ch == '#' || ch == '?';
 					}) && (
-						remainStr[remainingItems[0]] == '#'
+						remainStr[remainingItems[0]] == '.'
 						|| remainStr[remainingItems[0]] == '?'
 						);
 			} else {
@@ -164,7 +199,7 @@ struct Run {
 			}
 		};
 
-		while (remainStr.size() > remainingItems[0]) {
+		while (remainStr.size() >= remainingItems[0]) {
 			if (!checkNextItemWorks()) {
 				// it currently doesn't work, progress
 				if (remainStr[0] == '#') {
@@ -192,7 +227,27 @@ struct Run {
 
 					auto remainingItems2 = remainingItems.subspan(1);
 
-					pathSum += findArrangements2Internal(remainingItems2, processStr2, remainStr2, allItems);
+					std::vector<int> itemsVec;
+					itemsVec.assign_range(remainingItems2);
+
+					std::tuple<std::vector<int>, std::string> compareValue{ itemsVec, remainStr2};
+					if (memory.contains(compareValue)) {
+						pathSum += memory.at(compareValue);
+					} else {
+						auto timerStart = std::chrono::high_resolution_clock::now();
+					
+						auto val = findArrangements2Internal(remainingItems2, processStr2, remainStr2, allItems, memory);
+					
+						auto timerEnd = std::chrono::high_resolution_clock::now();
+					
+						if (timerEnd - timerStart > std::chrono::milliseconds{10}) {
+							memory[compareValue] = val;
+						}
+					
+						pathSum += val;
+					}
+
+					//pathSum += findArrangements2Internal(remainingItems2, processStr2, remainStr2, allItems, memory);
 				} else {
 					auto processStr2 = processStr;
 					for (int i = 0; i < remainingItems[0]; i++) {
@@ -203,16 +258,58 @@ struct Run {
 
 					auto remainingItems2 = remainingItems.subspan(1);
 
-					pathSum += findArrangements2Internal(remainingItems2, processStr2, remainStr2, allItems);
+					std::vector<int> itemsVec;
+					itemsVec.assign_range(remainingItems2);
+					
+					std::tuple<std::vector<int>, std::string> compareValue{ itemsVec, remainStr2 };
+					
+					if (memory.contains(compareValue)) {
+						pathSum += memory.at(compareValue);
+					} else {
+						auto timerStart = std::chrono::high_resolution_clock::now();
+					
+						auto val = findArrangements2Internal(remainingItems2, processStr2, remainStr2, allItems, memory);
+					
+						auto timerEnd = std::chrono::high_resolution_clock::now();
+					
+						if (timerEnd - timerStart > std::chrono::milliseconds{ 10 }) {
+							memory[compareValue] = val;
+						}
+					
+						pathSum += val;
+					}
+
+					//pathSum += findArrangements2Internal(remainingItems2, processStr2, remainStr2, allItems, memory);
 				}
 			}
-			{
+			if (remainStr[0] == '.' || remainStr[0] == '?') {
 				auto processStr2 = processStr;
 				processStr2.push_back('.');
 
 				auto remainStr2 = remainStr.substr(1);
+				
+				std::vector<int> itemsVec;
+				itemsVec.assign_range(remainingItems);
+				
+				std::tuple<std::vector<int>, std::string> compareValue{ itemsVec, remainStr2 };
+				
+				if (memory.contains(compareValue)) {
+					pathSum += memory.at(compareValue);
+				} else {
+					auto timerStart = std::chrono::high_resolution_clock::now();
+				
+					auto val = findArrangements2Internal(remainingItems, processStr2, remainStr2, allItems, memory);
+				
+					auto timerEnd = std::chrono::high_resolution_clock::now();
+				
+					if (timerEnd - timerStart > std::chrono::milliseconds{ 10 }) {
+						memory[compareValue] = val;
+					}
+				
+					pathSum += val;
+				}
 
-				pathSum += findArrangements2Internal(remainingItems, processStr2, remainStr2, allItems);
+				//pathSum += findArrangements2Internal(remainingItems, processStr2, remainStr2, allItems, memory);
 			}
 
 			return pathSum;
@@ -221,13 +318,13 @@ struct Run {
 		return 0;
 	}
 
-	uint64_t findArrangements2() {
+	uint64_t findArrangements2(std::unordered_map<std::tuple<std::vector<int>, std::string>, uint64_t>& memory) {
 		std::span<int> remainingItems = arrangements;
 		std::string processStr = "";
 		std::string_view remainStr = run;
 		std::span<int> allItems = arrangements;
 
-		return findArrangements2Internal(remainingItems, processStr, remainStr, allItems);
+		return findArrangements2Internal(remainingItems, processStr, remainStr, allItems, memory);
 	}
 };
 
@@ -267,31 +364,34 @@ int main(int argc, char* argv[]) {
 	auto lineArrangements = nonEmptyLines | std::views::transform(toRun) | std::ranges::to<std::vector>();
 
 	uint64_t totalArrangements = 0;
-	/*uint64_t totalArrangements2 = 0;
+	//uint64_t totalArrangements2 = 0;
 	int numRows = 0;
-	for (auto line : lineArrangements) {
-		line.expand();
-
-		//totalArrangements += line.findArrangemnets();
-		totalArrangements2 += line.findArrangements2();
-
-		++numRows;
-
-		fmt::print("Processed {}/1000\n", numRows);
-	}*/
+	// for (auto line : lineArrangements) {
+	// 	//line.expand();
+	//
+	// 	auto val = line.findArrangemnets();
+	// 	totalArrangements += val;
+	// 	//totalArrangements2 += line.findArrangements2();
+	//
+	// 	++numRows;
+	//
+	// 	fmt::print("Processed {}/1000 val {}\n", numRows, val);
+	// }
 
 
 	std::atomic<int> numProcesed = 0;
 
-	uint64_t totalArrangements2 = std::transform_reduce(std::execution::par_unseq, lineArrangements.begin(), lineArrangements.end(), 0ull, std::plus<>(), [&](auto line) {
+	std::unordered_map<std::tuple<std::vector<int>, std::string>, uint64_t> memory;
+
+	uint64_t totalArrangements2 = std::transform_reduce(lineArrangements.begin(), lineArrangements.end(), 0ull, std::plus<>(), [&](auto line) {
 		line.expand();
 
-		auto val = line.findArrangements2();
+		auto val = line.findArrangements2(memory);
 
 		auto processAmount = numProcesed.fetch_add(1);
 		++processAmount;
 
-		fmt::print("Processed {}/1000\n", processAmount);
+		fmt::print("Processed {}/1000 val {}\n", processAmount, val);
 
 		return val;
 	});
