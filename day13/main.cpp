@@ -41,7 +41,8 @@ struct Block {
 	int height;
 	std::map<Point, char> map;
 
-	int findReflectionNumber() const {
+	//int findReflectionNumber(std::optional<int> reflectSkipX, std::optional<int> reflectSkipY) const {
+	int findReflectionNumber(const std::set<int>& reflectSkipX, const std::set<int>& reflectSkipY) const {
 		auto checkXReflection = [&](int x) {
 			// y is the first line of reflection down
 			for (int xOff = 0; xOff < width; xOff++) {
@@ -83,12 +84,26 @@ struct Block {
 		};
 
 		for (int x = 1; x < width; x++) {
+			// if (reflectSkipX == x) {
+			// 	continue;
+			// }
+			if (reflectSkipX.contains(x)) {
+				continue;
+			}
+
 			if (checkXReflection(x)) {
 				return x;
 			}
 		}
 
 		for (int y = 1; y < height; y++) {
+			// if (reflectSkipY == y) {
+			// 	continue;
+			// }
+			if (reflectSkipY.contains(y)) {
+				continue;
+			}
+
 			if (checkYReflection(y)) {
 				// we have a valid y reflection
 				return y * 100;
@@ -132,8 +147,71 @@ int main(int argc, char* argv[]) {
 		return tmpBlock;
 	}) | std::ranges::to<std::vector>();
 
-	auto mapNumbers = std::transform_reduce(maps.begin(), maps.end(), 0, std::plus<>{}, [](auto& map) {
-		return map.findReflectionNumber();
+	int mapNum = 0;
+
+	auto mapNumbers = std::transform_reduce(maps.begin(), maps.end(), 0, std::plus<>{}, [&mapNum](auto& map) {
+		//auto val1 = map.findReflectionNumber(std::nullopt, std::nullopt);
+
+
+		std::set<int> reflectSkipX;
+		std::set<int> reflectSkipY;
+
+		while (true) {
+			auto val = map.findReflectionNumber(reflectSkipX, reflectSkipY);
+
+			if (val == 0) {
+				break;
+			}
+
+			if (val >= 100) {
+				reflectSkipY.insert(val / 100);
+			} else {
+				reflectSkipX.insert(val);
+			}
+		}
+
+		// if (val1 > 100) {
+		// 	reflectSkipY = val1 / 100;
+		// } else {
+		// 	reflectSkipX = val1;
+		// }
+		//
+		// auto val2 = map.findReflectionNumber(std::nullopt, std::nullopt);
+
+		// if (val2 != 0) {
+		// 	fmt::println("This is the problem");
+		// }
+		//
+		// if (val2 > 100) {
+		// 	reflectSkipY = val2 / 100;
+		// } else {
+		// 	reflectSkipX = val2;
+		// }
+
+		for (int y = 0; y < map.height; y++) {
+			for (int x = 0; x < map.width; x++) {
+				if (map.map[Point{x, y}] == '#') {
+					map.map[Point{ x, y }] = '.';
+				} else {
+					map.map[Point{ x, y }] = '#';
+				}
+		
+				auto val = map.findReflectionNumber(reflectSkipX, reflectSkipY);
+		
+				if (map.map[Point{ x, y }] == '#') {
+					map.map[Point{ x, y }] = '.';
+				} else {
+					map.map[Point{ x, y }] = '#';
+				}
+		
+				if (val != 0) {
+					fmt::println("Map {}: {}", mapNum++, val);
+					return val;
+				}
+			}
+		}
+
+		throw std::runtime_error("Did not find end");
 	});
 
 	auto end = std::chrono::high_resolution_clock::now();
