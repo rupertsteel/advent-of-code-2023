@@ -60,6 +60,70 @@ struct Block {
 		}
 	}
 
+	void slideLeft() {
+		for (int x = 0; x < width; x++) {
+			for (int y = 0; y < height; y++) {
+				if (map.contains(Point{ x, y }) && map[Point{ x, y }] == 'O') {
+					int newX = x;
+					while (newX > 0) {
+						if (map.contains(Point{ newX - 1, y })) {
+							break;
+						}
+						newX--;
+					}
+
+					map.erase(Point{ x, y });
+					map[Point{ newX, y}] = 'O';
+				}
+			}
+		}
+	}
+
+	void slideDown() {
+		for (int y = height - 1; y >= 0; y--) {
+			for (int x = 0; x < width; x++) {
+				if (map.contains(Point{ x, y }) && map[Point{ x, y }] == 'O') {
+					int newY = y;
+					while (newY < (height - 1)) {
+						if (map.contains(Point{ x, newY + 1 })) {
+							break;
+						}
+						newY++;
+					}
+
+					map.erase(Point{ x, y });
+					map[Point{ x, newY }] = 'O';
+				}
+			}
+		}
+	}
+
+	void slideRight() {
+		for (int x = width - 1; x >= 0; x--) {
+			for (int y = 0; y < height; y++) {
+				if (map.contains(Point{ x, y }) && map[Point{ x, y }] == 'O') {
+					int newX = x;
+					while (newX < (width - 1)) {
+						if (map.contains(Point{ newX + 1, y })) {
+							break;
+						}
+						newX++;
+					}
+
+					map.erase(Point{ x, y });
+					map[Point{ newX, y}] = 'O';
+				}
+			}
+		}
+	}
+
+	void slideCycle() {
+		slideUp();
+		slideLeft();
+		slideDown();
+		slideRight();
+	}
+
 	uint64_t scoreMap() {
 		uint64_t totalScore = 0;
 
@@ -71,6 +135,29 @@ struct Block {
 
 		return totalScore;
 	}
+
+	void debugPrint() {
+		std::string printStr;
+
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < width; x++) {
+				if (map.contains(Point{ x, y })) {
+					printStr += map[Point{ x, y }];
+				} else {
+					printStr += '.';
+				}
+			}
+
+			printStr += '\n';
+		}
+
+		fmt::print("{}\n", printStr);
+	}
+};
+
+struct CycleTracking {
+	uint64_t load;
+	uint64_t cycle;
 };
 
 
@@ -108,8 +195,49 @@ int main(int argc, char* argv[]) {
 		return tmpBlock;
 	}) | std::ranges::to<std::vector>();
 
-	maps[0].slideUp();
-	uint64_t weight = maps[0].scoreMap();
+	//maps[0].slideUp();
+	auto mapCopy = maps[0];
+	mapCopy.slideUp();
+	uint64_t weight = mapCopy.scoreMap();
+
+	uint64_t billionCycleWeight = 0;
+
+	uint64_t cycle = 0;
+
+	std::map<std::map<Point, char>, std::deque<CycleTracking>> cycleTracking;
+
+	while (true) {
+		maps[0].slideCycle();
+		cycle++;
+		auto score = maps[0].scoreMap();
+
+		cycleTracking[maps[0].map].push_back(CycleTracking{ score, cycle });
+		if (cycleTracking[maps[0].map].size() > 10) {
+			cycleTracking[maps[0].map].pop_front();
+		}
+		if (cycleTracking[maps[0].map].size() > 5) {
+			// find the cycle length
+			auto& vec = cycleTracking[maps[0].map];
+
+			std::vector<uint64_t> cyclesDiffs;
+			for (int i = 1; i < vec.size(); i++) {
+				cyclesDiffs.push_back(vec[i].cycle - vec[i - 1].cycle);
+			}
+
+			if (std::all_of(cyclesDiffs.begin(), cyclesDiffs.end(), [&](auto elem) {
+				return elem == cyclesDiffs[0];
+			})) {
+				// check if vec[0].cycle + cyclesDiffs[0] * ? == 1'000'000'000
+				// 1'000'000'000 - vec[0].cycle = cyclesDiffs[0] * ?
+				// (1'000'000'000 - vec[0].cycle) % cyclesDiffs[0] == 0
+
+				if ((1'000'000'000ull - vec[0].cycle) % cyclesDiffs[0] == 0) {
+					billionCycleWeight = vec[0].load;
+					break;
+				}
+			}
+		}
+	}
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
@@ -117,7 +245,7 @@ int main(int argc, char* argv[]) {
 	//debugPrintMap(galaxies);
 
 	fmt::print("Processed 1: {}\n", weight);
-	//fmt::print("Processed 2: {}\n", totalArrangements2);
+	fmt::print("Processed 2: {}\n", billionCycleWeight);
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
