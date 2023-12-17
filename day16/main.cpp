@@ -68,53 +68,14 @@ struct Beam {
 	bool operator==(const Beam&) const = default;
 };
 
-int main(int argc, char* argv[]) {
-	std::ifstream inputFile("inputs/day16.txt");
-	std::string input(std::istreambuf_iterator{ inputFile }, std::istreambuf_iterator<char>{});
-
-	auto start = std::chrono::high_resolution_clock::now();
-
-	//auto lines = std::string_view{ input } | std::views::split("\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); });
-	//auto nonEmptyLines = lines | std::views::filter([](auto sv) { return !sv.empty(); });
-
-	auto blocks = std::string_view{ input } | std::views::split("\n\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); });
-
-	auto maps = blocks | std::views::transform([](std::string_view sv) {
-		Block tmpBlock;
-
-		auto rowStr = std::views::zip(std::views::iota(0), sv | std::views::split("\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); })
-			| std::views::filter([](auto sv) { return !sv.empty(); }));
-
-		for (auto val : rowStr) {
-			auto row = std::get<0>(val);
-
-			auto values = std::get<1>(val);
-
-			for (int i = 0; i < values.size(); i++) {
-				tmpBlock.map[Point{ i, row }] = values[i];
-			}
-			tmpBlock.width = values.size();
-			tmpBlock.height = row + 1;
-		}
-
-		return tmpBlock;
-	}) | std::ranges::to<std::vector>();
-
-	auto map = maps[0];
-
+int countEnergizedBeams(Block& map, Beam startBeam) {
 	std::set<Point> activatedPoints;
 	std::queue<Beam> beamsToProcess;
 	std::set<Beam> processedBeams;
 
-	beamsToProcess.push(Beam{ { -1, 0 }, { 1, 0 } });
-
-	uint64_t it = 0;
+	beamsToProcess.push(startBeam);
 
 	while (!beamsToProcess.empty()) {
-		++it;
-		if (it % 1000 == 0) {
-			fmt::println("{} left to process, {} points activated", beamsToProcess.size(), activatedPoints.size());
-		}
 
 		auto beam = beamsToProcess.front();
 		beamsToProcess.pop();
@@ -164,13 +125,69 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+	return activatedPoints.size();
+}
+
+int main(int argc, char* argv[]) {
+	std::ifstream inputFile("inputs/day16.txt");
+	std::string input(std::istreambuf_iterator{ inputFile }, std::istreambuf_iterator<char>{});
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+	//auto lines = std::string_view{ input } | std::views::split("\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); });
+	//auto nonEmptyLines = lines | std::views::filter([](auto sv) { return !sv.empty(); });
+
+	auto blocks = std::string_view{ input } | std::views::split("\n\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); });
+
+	auto maps = blocks | std::views::transform([](std::string_view sv) {
+		Block tmpBlock;
+
+		auto rowStr = std::views::zip(std::views::iota(0), sv | std::views::split("\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); })
+			| std::views::filter([](auto sv) { return !sv.empty(); }));
+
+		for (auto val : rowStr) {
+			auto row = std::get<0>(val);
+
+			auto values = std::get<1>(val);
+
+			for (int i = 0; i < values.size(); i++) {
+				tmpBlock.map[Point{ i, row }] = values[i];
+			}
+			tmpBlock.width = values.size();
+			tmpBlock.height = row + 1;
+		}
+
+		return tmpBlock;
+	}) | std::ranges::to<std::vector>();
+
+	auto map = maps[0];
+
+	auto topLeftCount = countEnergizedBeams(map, Beam{ { -1, 0 }, { 1, 0 } });
+
+	int maxPoints = 0;
+
+	for (int i = 0; i < map.height; i++) {
+		Beam leftBeam{ {-1, i}, {1, 0} };
+		maxPoints = std::max(maxPoints, countEnergizedBeams(map, leftBeam));
+
+		Beam rightBeam{ {map.width, i}, {-1, 0} };
+		maxPoints = std::max(maxPoints, countEnergizedBeams(map, rightBeam));
+	}
+	for (int i = 0; i < map.width; i++) {
+		Beam topBeam{ {i, -1}, {0, 1} };
+		maxPoints = std::max(maxPoints, countEnergizedBeams(map, topBeam));
+
+		Beam bottomBeam{ {i, map.height}, {0, -1} };
+		maxPoints = std::max(maxPoints, countEnergizedBeams(map, bottomBeam));
+	}
+
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 	//debugPrintMap(galaxies);
 
-	fmt::print("Processed 1: {}\n", activatedPoints.size());
-	//fmt::print("Processed 2: {}\n", lensSum);
+	fmt::print("Processed 1: {}\n", topLeftCount);
+	fmt::print("Processed 2: {}\n", maxPoints);
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
