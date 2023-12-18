@@ -24,8 +24,8 @@ using namespace std::string_view_literals;
 using namespace std::string_literals;
 
 struct Point {
-	int x;
-	int y;
+	int64_t x;
+	int64_t y;
 
 	std::strong_ordering operator<=>(const Point&) const = default;
 	bool operator==(const Point&) const = default;
@@ -69,7 +69,6 @@ struct Map {
 struct Instruction {
 	Point directionDiff;
 	int amount;
-	uint32_t color;
 };
 
 Instruction parseInstruction(std::string_view sv) {
@@ -103,7 +102,42 @@ Instruction parseInstruction(std::string_view sv) {
 
 	auto colorSv = sv.substr(0, 6);
 	auto colorStr = std::string{ colorSv };
-	tmpInstruction.color = std::stoi(colorStr, nullptr, 16);
+
+	return tmpInstruction;
+}
+
+Instruction parseInstructionPart2(std::string_view sv) {
+	Instruction tmpInstruction;
+
+	sv.remove_prefix(2);
+
+	auto lenStrEnd = sv.find_first_of(' ');
+
+	sv.remove_prefix(lenStrEnd);
+	sv.remove_prefix(3);
+
+	auto distanceSv = sv.substr(0, 5);
+	auto distanceStr = std::string{ distanceSv };
+	tmpInstruction.amount = std::stoi(distanceStr, nullptr, 16);
+
+	sv.remove_prefix(5);
+
+	auto direction = sv[0];
+	switch (direction) {
+	case '0':
+		tmpInstruction.directionDiff = Point{ 1, 0 };
+		break;
+	case '1':
+		tmpInstruction.directionDiff = Point{ 0, 1 };
+		break;
+	case '2':
+		tmpInstruction.directionDiff = Point{ -1, 0 };
+		break;
+	default:
+	case '3':
+		tmpInstruction.directionDiff = Point{ 0, -1 };
+		break;
+	}
 
 	return tmpInstruction;
 }
@@ -159,6 +193,181 @@ void digOutHole(Map& map) {
 	}
 }
 
+// Scanline system
+// assumption, the line does not self intersect
+// track horizontal and vertical lines in separate multimaps
+// have a map of vertical columns of change, these are the rows to the left, right and on any movement point
+// vvvvv.vvvvv
+// .#########.
+// .#.......#.
+// .###.....#.
+// ...#.....#.
+// ...#.....#.
+// .###...###.
+// .#.....#...
+// .##....###.
+// ..#......#.
+// ..########.
+// for any row of change, go through the line lists to see how many cells there are
+// we assume that we start outside, and each line crossing, we transition inside, then outside.
+// lines themselves are always inside
+// if there is a gap in columns of change, we reuse the last calculated value, and multiply by the gap
+
+uint64_t findPart2Area(const std::vector<Instruction>& instructions) {
+	std::set<int64_t> columnsOfChange;
+	columnsOfChange.insert(-1);
+	columnsOfChange.insert(0);
+	columnsOfChange.insert(1);
+
+	std::map<int64_t, std::map<int64_t, int64_t>> rowSpans;
+	//std::map<int64_t, std::set<int64_t>> columnSpans;
+
+	Point currentPos{ 0, 0 };
+
+	Point topLeftInclusive = currentPos;
+	Point bottomRightInclusive = currentPos;
+
+	for (auto& instruction : instructions) {
+		Point destination = currentPos + Point{ instruction.directionDiff.x * instruction.amount, instruction.directionDiff.y * instruction.amount };
+
+		columnsOfChange.insert(destination.x);
+		columnsOfChange.insert(destination.x - 1);
+		columnsOfChange.insert(destination.x + 1);
+
+		topLeftInclusive.x = std::min(topLeftInclusive.x, destination.x);
+		topLeftInclusive.y = std::min(topLeftInclusive.y, destination.y);
+		bottomRightInclusive.x = std::max(bottomRightInclusive.x, destination.x);
+		bottomRightInclusive.y = std::max(bottomRightInclusive.y, destination.y);
+
+		if (instruction.directionDiff.x == 0) {
+			auto minY = std::min(currentPos.y, destination.y);
+			auto maxY = std::max(currentPos.y, destination.y);
+
+			//columnSpans[currentPos.x].insert(minY);
+			//columnSpans[currentPos.x].insert(maxY);
+		} else {
+			auto minX = std::min(currentPos.x, destination.x);
+			auto maxX = std::max(currentPos.x, destination.x);
+
+			rowSpans[currentPos.y].insert(std::make_pair(minX, maxX));
+		}
+
+		currentPos = destination;
+	}
+
+	topLeftInclusive.x-=2;
+	topLeftInclusive.y-=2;
+
+	bottomRightInclusive.x+=2;
+	bottomRightInclusive.y+=2;
+
+	uint64_t area = 0;
+
+	uint64_t prevRowArea = 0;
+
+	for (int64_t x = topLeftInclusive.x; x < bottomRightInclusive.x;) {
+		auto nextColIt = columnsOfChange.upper_bound(x);
+		if (nextColIt == columnsOfChange.end()) {
+			x = bottomRightInclusive.x;
+			continue;
+		}
+
+		auto nextX = *nextColIt;
+		if (nextX > (x + 1)) {
+			// we have a skip, add the area
+			auto gapToMultiply = nextX - x;
+
+			area += gapToMultiply * prevRowArea;
+		}
+
+		x = nextX;
+
+		prevRowArea = 0;
+
+		bool inside = false;
+
+		//auto xColumnSetIt = columnSpans.find(x);
+
+		for (int64_t y = topLeftInclusive.y; y < bottomRightInclusive.y;) {
+			for (auto yS = y; yS < bottomRightInclusive.y;) {
+				auto rowElem = rowSpans.upper_bound(yS);
+
+				// std::optional<std::set<int64_t>::iterator> columnElem;
+				// if (xColumnSetIt != columnSpans.end()) {
+				// 	columnElem = xColumnSetIt->second.upper_bound(yS);
+				// }
+
+				// check if rowElem is a row of spans, it might not overlap with our current x, so check if it does.
+				// If it doesn't, set yS to the value of rowElem
+
+				if (rowElem == rowSpans.end()) {
+					// we have reached the end, just exit out
+					y = bottomRightInclusive.y;
+					break;
+				}
+
+				auto rowElemColumnSpan = rowElem->second.upper_bound(x);
+				if (rowElemColumnSpan != rowElem->second.begin()) {
+					rowElemColumnSpan--;
+				}
+
+				// we now have a span, check if it overlaps
+				if (rowElemColumnSpan->first <= x && rowElemColumnSpan->second >= x) {
+					// we have a match
+					// increase area if jump from y to yS and inside,
+					// otherwise just jump
+					auto increaseSpan = rowElem->first - y + 1;
+
+					if (inside) {
+						prevRowArea += increaseSpan;
+					}
+					inside = !inside;
+					y = rowElem->first;
+					break;
+				} else {
+					// it doesn't overlap, increase yS and loop again
+					yS = rowElem->first;
+				}
+			}
+		}
+
+		area += prevRowArea;
+	}
+
+	return area;
+}
+
+uint64_t findPart2AreaV2(const std::vector<Instruction>& instructions) {
+	// go from instructions to points
+	Point currentPos{ 0, 0 };
+	std::vector<Point> points;
+
+	int64_t perimeter = 0;
+
+	for (auto& ins : instructions) {
+		auto newPos = currentPos + Point{ ins.directionDiff.x * ins.amount, ins.directionDiff.y * ins.amount };
+
+		points.push_back(newPos);
+
+		perimeter += (ins.amount);
+
+		currentPos = newPos;
+	}
+
+	uint64_t area = 0;
+
+	for (int i = 0; i < points.size(); i++) {
+		auto next = (i + 1) % points.size();
+
+		area += ((points[i].x * points[next].y) - (points[i].y * points[next].x));
+	}
+
+	area /= 2;
+
+	return area + (perimeter / 2) + 1;
+
+}
+
 int main(int argc, char* argv[]) {
 	std::ifstream inputFile("inputs/day18.txt");
 	std::string input(std::istreambuf_iterator{ inputFile }, std::istreambuf_iterator<char>{});
@@ -168,6 +377,8 @@ int main(int argc, char* argv[]) {
 	auto lines = std::string_view{ input } | std::views::split("\n"sv) | std::views::transform([](auto rng) { return std::string_view(rng.begin(), rng.end()); });
 	auto nonEmptyLines = lines | std::views::filter([](auto sv) { return !sv.empty(); });
 	auto instructions = nonEmptyLines | std::views::transform(parseInstruction) | std::ranges::to<std::vector>();
+
+	auto part2Instructions = nonEmptyLines | std::views::transform(parseInstructionPart2) | std::ranges::to<std::vector>();
 
 	Map map;
 	map.map[Point{ 0, 0 }] = Block{ std::nullopt, true, false };
@@ -194,13 +405,16 @@ int main(int argc, char* argv[]) {
 		return pair.second.dug;
 	});
 
+	auto part2Area = findPart2Area(part2Instructions);
+	auto part2AreaV2 = findPart2AreaV2(part2Instructions);
+
 	map.debugPrint();
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 	fmt::print("Processed 1: {}\n", dugCells);
-	//fmt::print("Processed 2: {}\n", maxPoints);
+	fmt::print("Processed 2: {}\n", part2AreaV2);
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
