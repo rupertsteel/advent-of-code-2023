@@ -162,3 +162,8 @@ add_executable(day18
     day18/main.cpp
 )
 target_link_libraries(day18 PUBLIC common)
+
+add_executable(day19
+    day19/main.cpp
+)
+target_link_libraries(day19 PUBLIC common)
