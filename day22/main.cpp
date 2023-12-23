@@ -55,6 +55,7 @@ struct Brick {
 	Point3D bottomLowerLeft;
 	Point3D deltaTopUpperRight;
 	int id;
+	bool fallen;
 };
 
 Brick parseBrick(std::string_view line) {
@@ -75,7 +76,7 @@ Brick parseBrick(std::string_view line) {
 	auto y2 = std::stoi(std::string{ match[5].str()});
 	auto z2 = std::stoi(std::string{ match[6].str()});
 
-	return Brick{ {std::min(x1, x2), std::min(y1, y1), std::min(z1, z2)}, {std::max(x1, x2) - std::min(x1, x2), std::max(y1, y2) - std::min(y1, y2), std::max(z1, z2) - std::min(z1, z2)}, -1 };
+	return Brick{ {std::min(x1, x2), std::min(y1, y1), std::min(z1, z2)}, {std::max(x1, x2) - std::min(x1, x2), std::max(y1, y2) - std::min(y1, y2), std::max(z1, z2) - std::min(z1, z2)}, -1, false };
 }
 
 std::vector<Brick> fallBricks(std::vector<Brick> inputBricks) {
@@ -98,6 +99,7 @@ std::vector<Brick> fallBricks(std::vector<Brick> inputBricks) {
 
 			if (!blockedPoints.contains(processBrick.bottomLowerLeft.z - 1)) {
 				processBrick.bottomLowerLeft.z--;
+				processBrick.fallen = true;
 				continue;
 			}
 
@@ -115,6 +117,7 @@ std::vector<Brick> fallBricks(std::vector<Brick> inputBricks) {
 
 			if (isSpaceFreeBelow) {
 				processBrick.bottomLowerLeft.z--;
+				processBrick.fallen = true;
 				continue;
 			} else {
 				break;
@@ -217,11 +220,28 @@ int main(int argc, char* argv[]) {
 
 	auto canRemove = checkCountCanRemove(fallenBricks);
 
+	int64_t numChain = 0;
+
+	for (auto& brick : fallenBricks) {
+		brick.fallen = false;
+	}
+
+	for (int i = 0; i < fallenBricks.size(); i++) {
+		auto newVec = fallenBricks;
+		newVec.erase(newVec.begin() + i);
+
+		auto newFallenBricks = fallBricks(newVec);
+
+		auto count_fallen = std::ranges::count_if(newFallenBricks, [](auto& b) {return b.fallen; });
+
+		numChain += count_fallen;
+	}
+
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 	fmt::print("Processed 1: {}\n", canRemove);
-	//fmt::print("Processed 2: {}\n", part2Buttons);
+	fmt::print("Processed 2: {}\n", numChain);
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
