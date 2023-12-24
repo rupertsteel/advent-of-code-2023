@@ -15,6 +15,7 @@
 #include <set>
 #include <ratio>
 #include <execution>
+#include <semaphore>
 #include <stack>
 #include <unordered_map>
 
@@ -68,15 +69,79 @@ std::array<Point, 4> plusOffsets{ {
 	{ 0, -1}
 } };
 
+std::vector<std::shared_ptr<std::set<Point>>> toDeallocateList;
+std::mutex toDeallocateListMutex;
+std::counting_semaphore<> toDeallocateListSemaphore{ 0 };
+
+struct FastUpdatePointSet {
+	std::shared_ptr<std::set<Point>> commonElements = std::make_unique<std::set<Point>>();
+
+	std::vector<Point> recentElements;
+
+	FastUpdatePointSet() = default;
+
+	FastUpdatePointSet(const FastUpdatePointSet&) = default;
+	FastUpdatePointSet(FastUpdatePointSet&&) = default;
+	FastUpdatePointSet& operator=(const FastUpdatePointSet&) = default;
+	FastUpdatePointSet& operator=(FastUpdatePointSet&&) = default;
+
+	~FastUpdatePointSet() {
+		{
+			std::scoped_lock<std::mutex> local(toDeallocateListMutex);
+			toDeallocateList.push_back(std::move(commonElements));
+			toDeallocateListSemaphore.release();
+		}
+	}
+
+	void rebalanceIfRequired() {
+		if (recentElements.size() > 50) {
+			if (commonElements.use_count() == 1) {
+				for (auto& recentElem : recentElements) {
+					commonElements->insert(recentElem);
+				}
+
+				recentElements.clear();
+				return;
+			}
+			auto newCommonSet = std::make_shared<std::set<Point>>(*commonElements);
+
+			for (auto& recentElem : recentElements) {
+				newCommonSet->insert(recentElem);
+			}
+
+			commonElements = newCommonSet;
+			recentElements.clear();
+		}
+	}
+
+	void insert(Point point) {
+		recentElements.push_back(point);
+
+		rebalanceIfRequired();
+	}
+
+	bool contains(Point point) const {
+		if (commonElements->contains(point)) {
+			return true;
+		}
+
+		return std::ranges::any_of(recentElements, [&](auto elem) {
+			return elem == point;
+		});
+	}
+};
+
 struct Path {
 	Point currentPoint;
 
 	int currentSteps;
 
-	std::set<Point> exploredPoints;
+	//std::set<Point> exploredPoints;
+	//FastUpdatePointSet exploredPoints;
+	std::vector<Point> exploredPoints;
 };
 
-std::vector<Path> parthSearch(const Block& block) {
+std::vector<Path> pathSearch(const Block& block, bool hills) {
 	// find our starting square
 	Point startingPoint{ 0, 0 };
 	for (int i = 0; i < block.width; i++) {
@@ -92,14 +157,34 @@ std::vector<Path> parthSearch(const Block& block) {
 		}
 	}
 
-	Path startingPath{ startingPoint, 0, {startingPoint} };
+	//Path startingPath{ startingPoint, 0, {startingPoint} };
+	Path startingPath;
+	startingPath.currentPoint = startingPoint;
+	startingPath.currentSteps = 0;
+	//startingPath.exploredPoints.insert(startingPoint);
+	startingPath.exploredPoints.push_back(startingPoint);
 
 	std::stack<Path> pathsToSearch;
 	pathsToSearch.push(startingPath);
 
 	std::vector<Path> endPaths;
 
+	uint64_t it = 0;
+
+	auto lastPrint = std::chrono::high_resolution_clock::now();
+
 	while (!pathsToSearch.empty()) {
+		++it;
+		if (it % 10'000 == 0) {
+			auto printTime = std::chrono::high_resolution_clock::now();
+			auto dur = printTime - lastPrint;
+			auto rate = 10000.0f / std::chrono::duration_cast<std::chrono::duration<float>>(dur).count();
+
+			lastPrint = printTime;
+
+			fmt::println("Processing it {}, depth {}, {} it/s", it, pathsToSearch.size(), rate);
+		}
+
 		// grab the path
 		auto processPath = pathsToSearch.top();
 		pathsToSearch.pop();
@@ -120,23 +205,27 @@ std::vector<Path> parthSearch(const Block& block) {
 				continue;
 			}
 
-			if (processPath.exploredPoints.contains(proposedPoint)) {
+			//if (processPath.exploredPoints.contains(proposedPoint)) {
+			if (std::ranges::contains(processPath.exploredPoints, proposedPoint)) {
 				continue;
 			}
 
-			if (
-				(block.map.at(processPath.currentPoint) == '<' && i != 0) ||
-				(block.map.at(processPath.currentPoint) == '>' && i != 1) ||
-				(block.map.at(processPath.currentPoint) == 'v' && i != 2) ||
-				(block.map.at(processPath.currentPoint) == '^' && i != 3)
-			) {
-				continue;
+			if (hills) {
+				if (
+					(block.map.at(processPath.currentPoint) == '<' && i != 0) ||
+					(block.map.at(processPath.currentPoint) == '>' && i != 1) ||
+					(block.map.at(processPath.currentPoint) == 'v' && i != 2) ||
+					(block.map.at(processPath.currentPoint) == '^' && i != 3)
+					) {
+					continue;
+				}
 			}
 
 			auto updatePath = processPath;
 			updatePath.currentPoint = proposedPoint;
 			updatePath.currentSteps++;
-			updatePath.exploredPoints.insert(updatePath.currentPoint);
+			//updatePath.exploredPoints.insert(updatePath.currentPoint);
+			updatePath.exploredPoints.push_back(updatePath.currentPoint);
 
 			pathsToSearch.push(updatePath);
 		}
@@ -150,7 +239,8 @@ void debugPrintMapPath(const Block& map, const Path& path) {
 
 	for (int y = 0; y < map.height; y++) {
 		for (int x = 0; x < map.width; x++) {
-			if (path.exploredPoints.contains(Point{x, y})) {
+			//if (path.exploredPoints.contains(Point{x, y})) {
+			if (std::ranges::contains(path.exploredPoints, Point{ x, y })) {
 				printStr += 'O';
 			} else {
 				printStr += map.map.at(Point{ x, y });
@@ -197,10 +287,37 @@ int main(int argc, char* argv[]) {
 
 	auto map = maps[0];
 
-	auto paths = parthSearch(map);
+	std::atomic_bool cleanupThreadShouldRun{ true };
+
+	std::jthread cleanupThread{ [&]() {
+		while (cleanupThreadShouldRun.load(std::memory_order::release)) {
+			bool acquired = toDeallocateListSemaphore.try_acquire_for(std::chrono::seconds{ 5 });
+
+			if (!acquired) {
+				continue;
+			}
+
+			std::shared_ptr<std::set<Point>> toDeallocateItem;
+
+			{
+				std::scoped_lock lock{ toDeallocateListMutex };
+				toDeallocateItem = std::move(toDeallocateList.back());
+				toDeallocateList.pop_back();
+			}
+		}
+	} };
+
+	auto paths = pathSearch(map, true);
 	auto longestPath = std::ranges::max_element(paths, {}, [](auto& elem) {
 		return elem.currentSteps;
 	});
+
+	auto paths2 = pathSearch(map, false);
+	auto longestPath2 = std::ranges::max_element(paths2, {}, [](auto& elem) {
+		return elem.currentSteps;
+	});
+
+	cleanupThreadShouldRun = false;
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
@@ -208,7 +325,7 @@ int main(int argc, char* argv[]) {
 	debugPrintMapPath(map, *longestPath);
 
 	fmt::print("Processed 1: {}\n", longestPath->currentSteps);
-	//fmt::print("Processed 2: {}\n", maxPoints);
+	fmt::print("Processed 2: {}\n", longestPath2->currentSteps);
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
