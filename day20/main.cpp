@@ -234,6 +234,84 @@ uint64_t countSignals(System system, int inputTimes) {
 	return lowSignals * highSignals;
 }
 
+struct Part2Subgraph {
+	std::string inputNodeToKeep;
+	std::string collectNodeName;
+	std::string collectNodeInputToKeep;
+};
+
+uint64_t findRxSignalTime(System system) {
+
+	uint64_t buttonPresses = 0;
+
+	bool rxSignalLowSent = false;
+
+	while (!rxSignalLowSent) {
+		if (buttonPresses % 100000 == 0) {
+			fmt::print("{} button presses\n", buttonPresses);
+		}
+
+		std::queue<Message> messageQueue;
+
+		messageQueue.push(Message{ "button", "broadcaster", false });
+		++buttonPresses;
+
+		while (!messageQueue.empty()) {
+			auto signal = messageQueue.front();
+			messageQueue.pop();
+
+			if (signal.dest == "rx" && signal.high == false) {
+				rxSignalLowSent = true;
+			}
+
+			if (signal.dest == "broadcaster") {
+				for (auto& dest : system.broadcasterSendTo) {
+					messageQueue.push(Message{ "broadcaster", dest, signal.high });
+				}
+			} else {
+				if (system.flipFlopModules.contains(signal.dest)) {
+					system.flipFlopModules[signal.dest].process(signal, messageQueue);
+				}
+				if (system.conjunctionModules.contains(signal.dest)) {
+					system.conjunctionModules[signal.dest].process(signal, messageQueue);
+				}
+			}
+		}
+	}
+
+	return buttonPresses;
+}
+
+System modifySystemForSubgraph(System inputSystem, Part2Subgraph changeInfo) {
+	inputSystem.broadcasterSendTo.clear();
+	inputSystem.broadcasterSendTo.push_back(changeInfo.inputNodeToKeep);
+
+	inputSystem.conjunctionModules[changeInfo.collectNodeName].inputMemory.clear();
+	inputSystem.conjunctionModules[changeInfo.collectNodeName].inputMemory.insert(std::make_pair(changeInfo.collectNodeInputToKeep, false));
+
+	return inputSystem;
+}
+
+uint64_t countButtonPressesPart2(System system, std::vector<Part2Subgraph> subgraphInfo) {
+
+	std::vector<uint64_t> subCycles;
+
+	for (int i = 0; i < subgraphInfo.size(); i++) {
+		auto subgraphSystem = modifySystemForSubgraph(system, subgraphInfo[i]);
+
+		auto cycles = findRxSignalTime(subgraphSystem);
+		subCycles.push_back(cycles);
+	}
+
+	uint64_t total = 1;
+
+	for (auto cycleCount : subCycles) {
+		total = std::lcm(total, cycleCount);
+	}
+
+	return total;
+}
+
 int main(int argc, char* argv[]) {
 	std::ifstream inputFile("inputs/day20.txt");
 	std::string input(std::istreambuf_iterator{ inputFile }, std::istreambuf_iterator<char>{});
@@ -244,11 +322,20 @@ int main(int argc, char* argv[]) {
 
 	auto part1Signals = countSignals(system, 1000);
 
+	std::vector<Part2Subgraph> part2Info{
+		{ "nd", "hb", "rr"},
+		{"lf", "hb", "bs"},
+		{"fx", "hb", "zb"},
+		{"mc", "hb", "js"}
+	};
+
+	auto part2Buttons = countButtonPressesPart2(system, part2Info);
+
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - start;
 
 	fmt::print("Processed 1: {}\n", part1Signals);
-	//fmt::print("Processed 2: {}\n", totalAcceptValues);
+	fmt::print("Processed 2: {}\n", part2Buttons);
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
