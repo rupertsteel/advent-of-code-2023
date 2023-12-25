@@ -126,6 +126,14 @@ int64_t countIntersections2d(const std::vector<Hail>& hails, int64_t minBound, i
 	return intersectionCount;
 }
 
+void printMathematicaSolveExpression(const std::vector<Hail>& hails) {
+	for (int i = 0; i < hails.size(); i++) {
+		fmt::print("rx + rdx * t{} == {} + {} * t{},", i, hails[i].startPoint.x, hails[i].velocity.x, i);
+		fmt::print("ry + rdy * t{} == {} + {} * t{},", i, hails[i].startPoint.y, hails[i].velocity.y, i);
+		fmt::print("rz + rdz * t{} == {} + {} * t{},", i, hails[i].startPoint.z, hails[i].velocity.z, i);
+	}
+}
+
 int main(int argc, char* argv[]) {
 	std::ifstream inputFile("inputs/day24.txt");
 	std::string input(std::istreambuf_iterator{ inputFile }, std::istreambuf_iterator<char>{});
@@ -149,8 +157,12 @@ int main(int argc, char* argv[]) {
 
 	//debugPrintMapPath(map, *longestPath);
 
+	printMathematicaSolveExpression(hailstones);
+
 	fmt::print("Processed 1: {}\n", intersections);
 	//fmt::print("Processed 2: {}\n", longestPath2->currentSteps);
+
+
 
 
 	fmt::print("Took {}\n", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(dur));
